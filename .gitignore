@@ -97,6 +97,6 @@ Thumbs.db
 *.tar.gz
 *.rar
 
-# 开发文档
-开发文档/
+# 修复脚本
+jupyter_fix/
 

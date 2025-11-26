@@ -117,6 +117,18 @@ def parse_args():
     parser.add_argument(
         "--save-dir", type=str, default="checkpoints", help="模型保存目录"
     )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="从checkpoint恢复训练（checkpoint文件路径）",
+    )
+    parser.add_argument(
+        "--checkpoint-interval",
+        type=int,
+        default=10,
+        help="每隔多少个epoch保存一次checkpoint（默认10）",
+    )
     return parser.parse_args()
 
 
@@ -180,6 +192,18 @@ def main():
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
+    # 创建保存目录
+    save_dir = Path(args.save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    # 训练轮数
+    num_epochs = args.epochs or cfg["training"]["epochs"]
+    
+    # 初始化训练状态
+    start_epoch = 0
+    best_val_acc = 0.0
+    train_history = []  # 记录训练历史
+
     # 模型初始化
     model = DCERD(cfg.get("model", {}))
     model = model.to(device)
@@ -190,18 +214,42 @@ def main():
         model.parameters(), lr=cfg["training"]["lr"]
     )
 
-    # 训练轮数
-    num_epochs = args.epochs or cfg["training"]["epochs"]
-
-    # 创建保存目录
-    save_dir = Path(args.save_dir)
-    save_dir.mkdir(parents=True, exist_ok=True)
+    # 从checkpoint恢复训练
+    if args.resume:
+        resume_path = Path(args.resume)
+        if not resume_path.exists():
+            raise FileNotFoundError(f"Checkpoint文件不存在: {resume_path}")
+        
+        print(f"\n从checkpoint恢复训练: {resume_path}")
+        checkpoint = torch.load(resume_path, map_location=device)
+        
+        # 加载模型状态
+        model.load_state_dict(checkpoint["model_state_dict"])
+        
+        # 加载优化器状态
+        if "optimizer_state_dict" in checkpoint:
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        
+        # 恢复训练状态
+        start_epoch = checkpoint.get("epoch", 0)
+        best_val_acc = checkpoint.get("val_acc", 0.0)
+        train_history = checkpoint.get("train_history", [])
+        
+        print(f"  恢复epoch: {start_epoch}/{num_epochs}")
+        print(f"  最佳验证准确率: {best_val_acc:.4f}")
+        print(f"  训练历史记录: {len(train_history)}个epoch")
+        
+        # 如果checkpoint中有配置，验证是否一致
+        if "config" in checkpoint:
+            checkpoint_cfg = checkpoint["config"]
+            if checkpoint_cfg.get("model", {}) != cfg.get("model", {}):
+                print("  ⚠ 警告: checkpoint中的模型配置与当前配置不一致")
 
     # 训练循环
     print("\n开始训练...")
-    best_val_acc = 0.0
+    checkpoint_interval = args.checkpoint_interval
 
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         # 训练阶段
         model.train()
         train_loss = 0.0
@@ -272,6 +320,15 @@ def main():
             f"Val Loss: {avg_val_loss:.4f} | Val Acc: {val_acc:.4f}"
         )
 
+        # 记录训练历史
+        train_history.append({
+            "epoch": epoch + 1,
+            "train_loss": avg_train_loss,
+            "train_acc": train_acc,
+            "val_loss": avg_val_loss,
+            "val_acc": val_acc,
+        })
+
         # 保存最佳模型
         if val_acc > best_val_acc:
             best_val_acc = val_acc
@@ -280,12 +337,54 @@ def main():
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "val_acc": val_acc,
+                "train_acc": train_acc,
+                "train_loss": avg_train_loss,
+                "val_loss": avg_val_loss,
                 "config": cfg,
+                "train_history": train_history,
             }
             torch.save(checkpoint, save_dir / "best_model.pt")
             print(f"  -> 保存最佳模型 (Val Acc: {val_acc:.4f})")
 
+        # 定期保存checkpoint（用于恢复训练）
+        if checkpoint_interval > 0 and (epoch + 1) % checkpoint_interval == 0:
+            checkpoint = {
+                "epoch": epoch + 1,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "val_acc": val_acc,
+                "train_acc": train_acc,
+                "train_loss": avg_train_loss,
+                "val_loss": avg_val_loss,
+                "best_val_acc": best_val_acc,
+                "config": cfg,
+                "train_history": train_history,
+            }
+            checkpoint_path = save_dir / f"checkpoint_epoch_{epoch+1}.pt"
+            torch.save(checkpoint, checkpoint_path)
+            print(f"  -> 保存checkpoint: {checkpoint_path.name}")
+
+        # 每个epoch结束时也保存最新checkpoint（便于恢复）
+        latest_checkpoint = {
+            "epoch": epoch + 1,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "val_acc": val_acc,
+            "train_acc": train_acc,
+            "train_loss": avg_train_loss,
+            "val_loss": avg_val_loss,
+            "best_val_acc": best_val_acc,
+            "config": cfg,
+            "train_history": train_history,
+        }
+        torch.save(latest_checkpoint, save_dir / "latest_checkpoint.pt")
+
     print(f"\n训练完成！最佳验证准确率: {best_val_acc:.4f}")
+    print(f"所有checkpoint保存在: {save_dir}")
+    print(f"  - best_model.pt: 最佳模型（Val Acc: {best_val_acc:.4f}）")
+    print(f"  - latest_checkpoint.pt: 最新checkpoint（可用于恢复训练）")
+    if checkpoint_interval > 0:
+        print(f"  - checkpoint_epoch_*.pt: 定期保存的checkpoint（每{checkpoint_interval}个epoch）")
 
 
 if __name__ == "__main__":
