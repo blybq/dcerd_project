@@ -5,11 +5,22 @@ MC-Fake数据集加载器。
 from __future__ import annotations
 
 import csv
+import sys
 from pathlib import Path
 from typing import Optional
 
 import torch
 from torch_geometric.data import Data, Dataset
+
+# 增加CSV字段大小限制以处理大字段（如text、retweet_relations等）
+# 默认限制是131072字节，对于包含大量关系数据的CSV可能不够
+# 设置为系统最大值或一个很大的值（如10MB）
+try:
+    # 尝试设置为系统最大值
+    csv.field_size_limit(sys.maxsize)
+except OverflowError:
+    # 如果系统最大值太大，设置为一个合理的大值（10MB）
+    csv.field_size_limit(10 * 1024 * 1024)
 
 
 def build_graph_from_event(
