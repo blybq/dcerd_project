@@ -10,12 +10,85 @@ from pathlib import Path
 
 import torch
 import yaml
+from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
-from torch_geometric.utils import to_data_list
 
 from src.data.loader import load_mcfake
 from src.models.dcerd import DCERD
 from src.utils.metrics import accuracy, binary_auc
+
+
+def batch_to_data_list(batch):
+    """
+    将批处理的Batch对象分离为单独的Data对象列表。
+    
+    这是to_data_list的替代实现，兼容不同版本的PyTorch Geometric。
+    """
+    # 方法1: 尝试使用PyTorch Geometric的内置方法（如果存在）
+    try:
+        from torch_geometric.utils import to_data_list
+        return to_data_list(batch)
+    except ImportError:
+        pass
+    
+    # 方法2: 尝试使用Batch对象的to_data_list方法（某些版本）
+    if hasattr(batch, 'to_data_list'):
+        return batch.to_data_list()
+    
+    # 方法3: 手动分离（兼容性最好的方法）
+    data_list = []
+    
+    # 检查是否是批处理（有batch属性）
+    if hasattr(batch, 'batch') and batch.batch is not None:
+        # 批处理模式：使用batch属性分离
+        num_graphs = batch.batch.max().item() + 1
+        
+        # 获取每个图的节点范围
+        node_counts = torch.bincount(batch.batch, minlength=num_graphs)
+        node_offsets = torch.cumsum(torch.cat([torch.tensor([0], device=node_counts.device), node_counts[:-1]]), dim=0)
+        
+        for i in range(num_graphs):
+            start_idx = node_offsets[i].item()
+            end_idx = start_idx + node_counts[i].item()
+            
+            # 提取节点特征
+            x = batch.x[start_idx:end_idx] if hasattr(batch, 'x') and batch.x is not None else None
+            
+            # 提取边索引（PyTorch Geometric在批处理时已经调整了边索引）
+            if hasattr(batch, 'edge_index') and batch.edge_index is not None and batch.edge_index.numel() > 0:
+                # 找到属于当前图的边
+                edge_mask = (batch.edge_index[0] >= start_idx) & (batch.edge_index[0] < end_idx) & \
+                           (batch.edge_index[1] >= start_idx) & (batch.edge_index[1] < end_idx)
+                edge_index = batch.edge_index[:, edge_mask]
+                
+                # 重新映射节点索引到局部索引（从0开始）
+                if edge_index.numel() > 0:
+                    edge_index = edge_index - start_idx
+            else:
+                edge_index = torch.empty((2, 0), dtype=torch.long, device=batch.x.device if hasattr(batch, 'x') else torch.device('cpu'))
+            
+            # 提取标签
+            if hasattr(batch, 'y') and batch.y is not None:
+                if batch.y.dim() == 0:
+                    # 单个标签（所有图共享）
+                    y = batch.y
+                elif batch.y.dim() == 1:
+                    # 每个图一个标签
+                    y = batch.y[i] if i < batch.y.shape[0] else None
+                else:
+                    y = None
+            else:
+                y = None
+            
+            # 创建Data对象
+            if x is not None:
+                data = Data(x=x, edge_index=edge_index, y=y)
+                data_list.append(data)
+    else:
+        # 单个图：直接返回
+        data_list.append(batch)
+    
+    return data_list
 
 
 def parse_args():
@@ -126,7 +199,7 @@ def main():
     with torch.no_grad():
         for batch in test_loader:
             batch = batch.to(device)
-            data_list = to_data_list(batch)
+            data_list = batch_to_data_list(batch)
 
             for data in data_list:
                 x = data.x.to(device)
