@@ -1,0 +1,16 @@
+model:
+  hidden_dim: 64
+  K: 20
+  m: 4
+  tau: 1.0
+  beta: 1.0
+  gamma: 0.5
+
+training:
+  batch_size: 8
+  epochs: 5
+  lr: 0.001
+
+data:
+  root_dir: data/weibo
+

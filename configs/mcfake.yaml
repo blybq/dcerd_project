@@ -1,0 +1,16 @@
+model:
+  hidden_dim: 64
+  K: 15
+  m: 3
+  tau: 1.0
+  beta: 1.0
+  gamma: 0.5
+
+training:
+  batch_size: 4
+  epochs: 3
+  lr: 0.001
+
+data:
+  path: MC_Fake_dataset.csv
+

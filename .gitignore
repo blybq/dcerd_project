@@ -1,0 +1,102 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyTorch
+*.pth
+*.pt
+*.ckpt
+checkpoints/
+*.tar
+
+# Jupyter Notebook
+.ipynb_checkpoints
+# 允许提交colab_setup.ipynb，但忽略其他notebook
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 数据文件（大文件不应提交到Git）
+*.csv
+*.json
+*.jsonl
+*.tsv
+# data/
+datasets/
+MC_Fake_dataset.csv
+weibo/
+
+# 日志和输出
+logs/
+*.log
+outputs/
+results/
+runs/
+wandb/
+
+# 环境
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# 测试覆盖率
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+.hypothesis/
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# 系统文件
+Thumbs.db
+.DS_Store
+
+# 模型权重（可选，如果不想提交训练好的模型）
+# *.pt
+# *.pth
+# checkpoints/
+
+# 其他
+*.zip
+*.tar.gz
+*.rar
+
+# 开发文档
+开发文档/
+
